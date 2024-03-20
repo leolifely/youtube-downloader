@@ -3,21 +3,39 @@ import express from 'express';
 import cors from 'cors';
 import fs from 'fs';
 import mergeAV from './merge';
-
+import {cacheVideo, checkForCachedData} from "./caching";
 const app = express();
 const port = 3000;
 app.use(cors());
 
-app.get('/api/youtube-downloader/download', (req, res) => {
+app.get('/api/youtube-downloader/download', async (req, res) => {
   console.log('GET /api/youtube-downloader/download, id', req.query.id);
   const videoId = req.query.id;
   if (videoId === undefined) {
     res.sendStatus(404);
   } else {
     // @ts-ignore
-    downloadAndMerge(videoId).then((result) => {
-      res.sendFile(`${videoId}.mp4`, {root: __dirname});
-    });
+    if (await checkForCachedData(videoId, '/media/leoli/cache_drive')) {
+      res.sendFile(`/media/leoli/cache_drive/${videoId}.mp4`);
+    } else {
+      // @ts-ignore
+      downloadAndMerge(videoId).then((result) => {
+        res.sendFile(`${videoId}.mp4`, {root: __dirname});
+        // @ts-ignore
+        cacheVideo(videoId, '/media/leoli/cache_drive').then((result) => {
+          if (result) {
+            console.log(`Cached video ${videoId}`);
+            fs.unlink(`${__dirname}/${videoId}.mp4`, (err) => {
+              if (err) {
+                console.error(err);
+              } else {
+                console.log(`Removed video ${__dirname}/${videoId}`);
+              }
+            })
+          }
+        });
+      });
+    }
   }
 })
 
